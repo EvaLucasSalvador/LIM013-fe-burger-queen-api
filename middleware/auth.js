@@ -1,4 +1,6 @@
+/* eslint-disable linebreak-style */
 const jwt = require('jsonwebtoken');
+const conexion = require('../db');
 
 module.exports = (secret) => (req, resp, next) => {
   const { authorization } = req.headers;
@@ -19,20 +21,39 @@ module.exports = (secret) => (req, resp, next) => {
     }
 
     // TODO: Verificar identidad del usuario usando `decodeToken.uid`
+    const sql = `SELECT * FROM users WHERE email = "${decodedToken.result[0].email}" `;
+    conexion.query(sql, (error, result) => {
+      if (error) throw error;
+      // console.log(result);
+      if (result) {
+        req.user = result[0];
+        next();
+      } else {
+        // console.log('entro');
+        next(404);
+      }
+    });
   });
 };
 
-
-module.exports.isAuthenticated = (req) => (
+module.exports.isAuthenticated = (req) => {
   // TODO: decidir por la informacion del request si la usuaria esta autenticada
-  false
-);
+  if (req.user) {
+    // console.log('entro2');
+    return true;
+  }
+  return false;
+};
 
 
-module.exports.isAdmin = (req) => (
+module.exports.isAdmin = (req) => {
   // TODO: decidir por la informacion del request si la usuaria es admin
-  false
-);
+  if (req.user.isadmin) {
+    // console.log('entro3');
+    return true;
+  }
+  return false;
+};
 
 
 module.exports.requireAuth = (req, resp, next) => (
