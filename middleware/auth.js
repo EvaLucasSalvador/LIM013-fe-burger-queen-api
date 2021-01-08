@@ -1,6 +1,8 @@
 /* eslint-disable linebreak-style */
 const jwt = require('jsonwebtoken');
 const conexion = require('../db');
+const { promisify } = require('util')
+const queryMysql = promisify(conexion.query).bind(conexion);
 
 module.exports = (secret) => (req, resp, next) => {
   const { authorization } = req.headers;
@@ -15,29 +17,37 @@ module.exports = (secret) => (req, resp, next) => {
     return next();
   }
 
-  jwt.verify(token, secret, (err, decodedToken) => {
+  jwt.verify(token, secret, async (err, decodedToken) => {
     if (err) {
       return next(403);
     }
 
     // TODO: Verificar identidad del usuario usando `decodeToken.uid`
-    const sql = `SELECT * FROM users WHERE email = "${decodedToken.result[0].email}" `;
-    conexion.query(sql, (error, result) => {
-      if (error) throw error;
-      // console.log(result);
-      if (result) {
-        req.user = result[0];
-        next();
-      } else {
+    try {
+      const query = `SELECT * FROM users WHERE id = ${decodedToken.id}`;
+      const result = await queryMysql(query)
+
+      if(result && result.length === 0){
         // console.log('entro');
         next(404);
       }
-    });
+
+      req.user = {
+        id: result[0].id,
+        roles: JSON.parse(result[0].roles)
+      };
+      next();
+
+    } catch(error){
+      if (error) throw error;
+    }
   });
 };
 
 module.exports.isAuthenticated = (req) => {
   // TODO: decidir por la informacion del request si la usuaria esta autenticada
+  console.log('-- req.user --')
+  console.log(req.user)
   if (req.user) {
     // console.log('entro2');
     return true;
@@ -48,7 +58,7 @@ module.exports.isAuthenticated = (req) => {
 
 module.exports.isAdmin = (req) => {
   // TODO: decidir por la informacion del request si la usuaria es admin
-  if (req.user.isadmin) {
+  if (req.user.roles && req.user.roles.admin) {
     // console.log('entro3');
     return true;
   }

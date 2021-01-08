@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config.js');
 
 const conexion = require('../db');
-const { validationResult, body, param, query } = require('express-validator');
+const { validationResult, body } = require('express-validator');
 const { promisify } = require('util');
 const queryMysql = promisify(conexion.query).bind(conexion);
 
@@ -43,9 +43,6 @@ module.exports = (app, nextMain) => {
 
         const query = `SELECT * FROM users WHERE email = "${req.body.email}"`;
         const result = await queryMysql(query)
-        
-        console.log('-- result --')
-        console.log(result)
 
         if(result && result.length === 0){
           throw new Error('Invalid email.')
@@ -56,7 +53,7 @@ module.exports = (app, nextMain) => {
           throw new Error('Invalid password.')
         }
 
-        const jsontoken = jwt.sign({ result }, secret, {
+        const jsontoken = jwt.sign({ id: result[0].id, roles: JSON.parse(result[0].roles) }, secret, {
           expiresIn: '1h',
         });
         resp.header('authorization', jsontoken);

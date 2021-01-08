@@ -1,4 +1,6 @@
 const bcrypt = require('bcrypt');
+const { validationResult, query, body, header, oneOf, check, buildCheckFunction } = require('express-validator')
+const checkParams = buildCheckFunction(['params'])
 
 const {
   requireAuth,
@@ -7,7 +9,10 @@ const {
 
 const {
   getUsers,
+  getUser,
+  createUser
 } = require('../controller/users');
+// const { query } = require('express');
 
 
 const initAdminUser = (app, next) => {
@@ -76,7 +81,71 @@ module.exports = (app, next) => {
    * @code {401} si no hay cabecera de autenticación
    * @code {403} si no es ni admin
    */
-  app.get('/users', requireAdmin, getUsers);
+  app.get('/users', 
+    function (req, resp, next){
+      console.log('-- req.headers --')
+      console.log(req.headers)
+      next()
+    }
+    ,requireAdmin, [
+    query('page').isInt(),
+    query('limit').isInt(),
+    header('link').custom(value => {
+      if(!value || (value && value.trim().length === 0)){
+        throw new Error('link is empty.');
+      }
+
+      let link
+      try {
+        link = JSON.parse(value)
+      } catch(err){
+        throw new Error('Invalid value.');
+      }
+
+      function validURL(url){
+        const pattern = /(http(s)?:\/\/.)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/g
+        const regexPattern = new RegExp(pattern,"i")
+        return regexPattern.test(url)
+      }
+
+      if(!link.first){
+        throw new Error('link.first is empty.');
+      }
+      if(!validURL(link.first)){
+        throw new Error('link.first has invalid value.');
+      }
+      if(!link.prev){
+        throw new Error('link.prev is empty.');
+      }
+      if(!validURL(link.prev)){
+        throw new Error('link.prev has invalid value.');
+      }
+      if(!link.next){
+        throw new Error('link.next is empty.');
+      }
+      if(!validURL(link.next)){
+        throw new Error('link.next has invalid value.');
+      }
+      if(!link.last){
+        throw new Error('link.last is empty.');
+      }
+      if(!validURL(link.last)){
+        throw new Error('link.last has invalid value.');
+      }
+      return true
+    })
+  ],
+    (req, resp, next) => {
+      const errors = validationResult(req)
+      if(!errors.isEmpty()){
+        return resp.status(400).json({
+          success: 0,
+          errors: errors.array()
+        })
+      }
+      next()
+    },
+    getUsers);
 
   /**
    * @name GET /users/:uid
@@ -94,8 +163,19 @@ module.exports = (app, next) => {
    * @code {403} si no es ni admin o la misma usuaria
    * @code {404} si la usuaria solicitada no existe
    */
-  app.get('/users/:uid', requireAuth, (req, resp) => {
-  });
+  app.get('/users/:uid', requireAuth, oneOf([
+    checkParams('uid').isEmail().withMessage('Invalid email value.'),
+    checkParams('uid').isInt().withMessage('Invalid integer value.')
+  ]) ,(req, resp, next) => {
+    const errors = validationResult(req)
+    if(!errors.isEmpty()){
+      return resp.status(400).json({
+        success: 0,
+        errors: errors.array()
+      })
+    }
+    next()
+  }, getUser);
 
   /**
    * @name POST /users
@@ -116,8 +196,21 @@ module.exports = (app, next) => {
    * @code {401} si no hay cabecera de autenticación
    * @code {403} si ya existe usuaria con ese `email`
    */
-  app.post('/users', requireAdmin, (req, resp, next) => {
-  });
+  app.post('/users', requireAdmin, [
+    body('email').isEmail(),
+    body('password').isString(),
+    body('roles').exists(),
+    body('roles.admin').isBoolean()
+  ] ,(req, resp, next) => {
+    const errors = validationResult(req)
+    if(!errors.isEmpty()){
+      return resp.status(400).json({
+        success: 0,
+        errors: errors.array()
+      })
+    }
+    next()
+  }, createUser);
 
   /**
    * @name PUT /users
