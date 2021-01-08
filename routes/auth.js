@@ -7,6 +7,7 @@ const conexion = require('../db');
 const { validationResult, body } = require('express-validator');
 const { promisify } = require('util');
 const queryMysql = promisify(conexion.query).bind(conexion);
+const bcrypt = require('bcrypt')
 
 const { secret } = config;
 
@@ -48,7 +49,7 @@ module.exports = (app, nextMain) => {
           throw new Error('Invalid email.')
         }
 
-        const pass = req.body.password === result[0].password;
+        const pass = bcrypt.compareSync(req.body.password, result[0].password)
         if(!pass){
           throw new Error('Invalid password.')
         }
@@ -77,3 +78,4 @@ module.exports = (app, nextMain) => {
 
   return nextMain();
 };
+

@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
-const { validationResult, query, body, header, oneOf, check, buildCheckFunction } = require('express-validator')
+const { validationResult, query, body, param, oneOf, buildCheckFunction } = require('express-validator')
 const checkParams = buildCheckFunction(['params'])
 
 const {
@@ -10,7 +10,9 @@ const {
 const {
   getUsers,
   getUser,
-  createUser
+  createUser,
+  updateUser,
+  deleteUser
 } = require('../controller/users');
 // const { query } = require('express');
 
@@ -28,6 +30,9 @@ const initAdminUser = (app, next) => {
   };
 
   // TODO: crear usuaria admin
+  // valida que exista un usuario administrador en la base de datos, en el caso que no lo hubiera, 
+  // se asigna automaticamente al primer usuario que se cree
+  
   next();
 };
 
@@ -90,50 +95,50 @@ module.exports = (app, next) => {
     ,requireAdmin, [
     query('page').isInt(),
     query('limit').isInt(),
-    header('link').custom(value => {
-      if(!value || (value && value.trim().length === 0)){
-        throw new Error('link is empty.');
-      }
+    // header('link').custom(value => {
+    //   if(!value || (value && value.trim().length === 0)){
+    //     throw new Error('link is empty.');
+    //   }
 
-      let link
-      try {
-        link = JSON.parse(value)
-      } catch(err){
-        throw new Error('Invalid value.');
-      }
+    //   let link
+    //   try {
+    //     link = JSON.parse(value)
+    //   } catch(err){
+    //     throw new Error('Invalid value.');
+    //   }
 
-      function validURL(url){
-        const pattern = /(http(s)?:\/\/.)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/g
-        const regexPattern = new RegExp(pattern,"i")
-        return regexPattern.test(url)
-      }
+    //   function validURL(url){
+    //     const pattern = /(http(s)?:\/\/.)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&//=]*)/g
+    //     const regexPattern = new RegExp(pattern,"i")
+    //     return regexPattern.test(url)
+    //   }
 
-      if(!link.first){
-        throw new Error('link.first is empty.');
-      }
-      if(!validURL(link.first)){
-        throw new Error('link.first has invalid value.');
-      }
-      if(!link.prev){
-        throw new Error('link.prev is empty.');
-      }
-      if(!validURL(link.prev)){
-        throw new Error('link.prev has invalid value.');
-      }
-      if(!link.next){
-        throw new Error('link.next is empty.');
-      }
-      if(!validURL(link.next)){
-        throw new Error('link.next has invalid value.');
-      }
-      if(!link.last){
-        throw new Error('link.last is empty.');
-      }
-      if(!validURL(link.last)){
-        throw new Error('link.last has invalid value.');
-      }
-      return true
-    })
+    //   if(!link.first){
+    //     throw new Error('link.first is empty.');
+    //   }
+    //   if(!validURL(link.first)){
+    //     throw new Error('link.first has invalid value.');
+    //   }
+    //   if(!link.prev){
+    //     throw new Error('link.prev is empty.');
+    //   }
+    //   if(!validURL(link.prev)){
+    //     throw new Error('link.prev has invalid value.');
+    //   }
+    //   if(!link.next){
+    //     throw new Error('link.next is empty.');
+    //   }
+    //   if(!validURL(link.next)){
+    //     throw new Error('link.next has invalid value.');
+    //   }
+    //   if(!link.last){
+    //     throw new Error('link.last is empty.');
+    //   }
+    //   if(!validURL(link.last)){
+    //     throw new Error('link.last has invalid value.');
+    //   }
+    //   return true
+    // })
   ],
     (req, resp, next) => {
       const errors = validationResult(req)
@@ -234,8 +239,35 @@ module.exports = (app, next) => {
    * @code {403} una usuaria no admin intenta de modificar sus `roles`
    * @code {404} si la usuaria solicitada no existe
    */
-  app.put('/users/:uid', requireAuth, (req, resp, next) => {
-  });
+  app.put('/users/:uid', requireAuth, [
+    oneOf([
+      checkParams('uid').isEmail().withMessage('Invalid email value.'),
+      checkParams('uid').isInt().withMessage('Invalid integer value.')
+    ]),
+    body('email').isEmail(),
+    body('password').isString(),
+    body('roles').custom(value => {
+      if(typeof value === 'undefined'){
+        return true
+      }
+      if(!(typeof value === 'object' && value.constructor === Object)){
+        throw new Error('Invalid roles value.')
+      }
+      if(!(value.hasOwnProperty('admin') && typeof value.admin === 'boolean')){
+        throw new Error('Invalid roles.admin value.')
+      }
+      return true
+    })
+  ],(req, resp, next) => {
+    const errors = validationResult(req)
+    if(!errors.isEmpty()){
+      return resp.status(400).json({
+        success: 0,
+        errors: errors.array()
+      })
+    }
+    next()
+  }, updateUser);
 
   /**
    * @name DELETE /users
@@ -253,8 +285,19 @@ module.exports = (app, next) => {
    * @code {403} si no es ni admin o la misma usuaria
    * @code {404} si la usuaria solicitada no existe
    */
-  app.delete('/users/:uid', requireAuth, (req, resp, next) => {
-  });
+  app.delete('/users/:uid', requireAuth, oneOf([
+    checkParams('uid').isEmail().withMessage('Invalid email value.'),
+    checkParams('uid').isInt().withMessage('Invalid integer value.')
+  ]), (req, resp, next) => {
+    const errors = validationResult(req)
+    if(!errors.isEmpty()){
+      return resp.status(400).json({
+        success: 0,
+        errors: errors.array()
+      })
+    }
+    next()
+  }, deleteUser);
 
   initAdminUser(app, next);
 };
