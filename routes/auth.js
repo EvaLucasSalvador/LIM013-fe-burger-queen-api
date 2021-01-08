@@ -4,6 +4,9 @@ const jwt = require('jsonwebtoken');
 const config = require('../config.js');
 
 const conexion = require('../db');
+const { validationResult, body, param, query } = require('express-validator');
+const { promisify } = require('util');
+const queryMysql = promisify(conexion.query).bind(conexion);
 
 const { secret } = config;
 
@@ -22,25 +25,37 @@ module.exports = (app, nextMain) => {
      * @auth No requiere autenticación
      */
 
-  app.post('/auth', (req, resp, next) => {
-    const { email, password } = req.body;
-    console.log(email, password);
-    if (!email || !password) {     
-    }
-    const sql = `SELECT * FROM users WHERE id = 3`;
-    
-    conexion.query(sql, (error, result) => {
-      console.log(error, result);
-      if (error) throw error;
-      if (!result) {
+  app.post('/auth', 
+    [
+      body('email').isEmail(),
+      body('password').isString()
+    ],
+    async (req, resp, next) => {
+      const errors = validationResult(req)
+      if(!errors.isEmpty()){
         return resp.status(400).json({
           success: 0,
-          data: 'invalid email',
-        });
+          errors: errors.array()
+        })
       }
 
-      const pass = password === result[0].password;
-      if (pass) {
+      try {
+
+        const query = `SELECT * FROM users WHERE email = "${req.body.email}"`;
+        const result = await queryMysql(query)
+        
+        console.log('-- result --')
+        console.log(result)
+
+        if(result && result.length === 0){
+          throw new Error('Invalid email.')
+        }
+
+        const pass = req.body.password === result[0].password;
+        if(!pass){
+          throw new Error('Invalid password.')
+        }
+
         const jsontoken = jwt.sign({ result }, secret, {
           expiresIn: '1h',
         });
@@ -51,18 +66,16 @@ module.exports = (app, nextMain) => {
           token: jsontoken,
         });
 
-        // resp.header('authorization', "token");
-        // resp.status(200).json(result);
-      } else {
-        resp.status(400).json({
+      } catch(error){
+        return resp.status(400).json({
           success: 0,
-          data: 'Invalid password',
+          errors: [
+            {
+              msg: error.message
+            }
+          ]
         });
-      }
-    });
-
-    // TODO: autenticar a la usuarix
-    // next();
+      };
   });
 
   return nextMain();
