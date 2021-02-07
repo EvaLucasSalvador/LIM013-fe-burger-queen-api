@@ -1,6 +1,10 @@
 const {
+  body, param, query, validationResult,
+} = require('express-validator');
+const {
   requireAuth,
 } = require('../middleware/auth');
+const { createOrder } = require('../controller/orders');
 
 /** @module orders */
 module.exports = (app, nextMain) => {
@@ -83,8 +87,23 @@ module.exports = (app, nextMain) => {
    * @code {400} no se indica `userId` o se intenta crear una orden sin productos
    * @code {401} si no hay cabecera de autenticación
    */
-  app.post('/orders', requireAuth, (req, resp, next) => {
-  });
+  app.post('/orders',
+    [
+      body('userId').isInt(),
+      body('client').isString(),
+      body('products').isArray(),
+      body('products.*.qty').isInt(),
+      body('products.*.productId').isInt(),
+    ],
+    requireAuth,
+    (req, resp, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        next(400);
+        return;
+      }
+      next();
+    }, createOrder);
 
   /**
    * @name PUT /orders

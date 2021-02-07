@@ -1,4 +1,11 @@
 const bcrypt = require('bcrypt');
+const {
+  validationResult, query, body, param, oneOf, buildCheckFunction,
+} = require('express-validator');
+
+const checkParams = buildCheckFunction(['params']);
+const { promisify } = require('util');
+const conexion = require('../db');
 
 const {
   requireAuth,
@@ -7,10 +14,14 @@ const {
 
 const {
   getUsers,
+  getUser,
+  createUser,
+  updateUser,
+  deleteUser,
 } = require('../controller/users');
+// const { query } = require('express');
 
-
-const initAdminUser = (app, next) => {
+const initAdminUser = async (app, next) => {
   const { adminEmail, adminPassword } = app.get('config');
   if (!adminEmail || !adminPassword) {
     return next();
@@ -23,9 +34,18 @@ const initAdminUser = (app, next) => {
   };
 
   // TODO: crear usuaria admin
+  // valida que exista un usuario administrador en la base de datos, en el caso que no lo hubiera,
+  // se asigna automaticamente al primer usuario que se cree
+
+  // create first user admin
+  const queryMysql = promisify(conexion.query).bind(conexion);
+  let result = await queryMysql(`SELECT * FROM USERS WHERE EMAIL = '${adminEmail}'`);
+  if (result.length === 0) {
+    result = await queryMysql(`INSERT INTO USERS VALUES (DEFAULT,'${adminUser.email}','${adminUser.password}','${JSON.stringify(adminUser.roles)}', DEFAULT)`);
+  }
+
   next();
 };
-
 
 /*
  * Diagrama de flujo de una aplicación y petición en node - express :
@@ -76,7 +96,20 @@ module.exports = (app, next) => {
    * @code {401} si no hay cabecera de autenticación
    * @code {403} si no es ni admin
    */
-  app.get('/users', requireAdmin, getUsers);
+  app.get('/users',
+    requireAdmin, [
+      query('page').isInt({ min: 1 }),
+      query('limit').isInt({ min: 5 }),
+    ],
+    (req, resp, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        next(400);
+        return;
+      }
+      next();
+    },
+    getUsers);
 
   /**
    * @name GET /users/:uid
@@ -94,8 +127,17 @@ module.exports = (app, next) => {
    * @code {403} si no es ni admin o la misma usuaria
    * @code {404} si la usuaria solicitada no existe
    */
-  app.get('/users/:uid', requireAuth, (req, resp) => {
-  });
+  app.get('/users/:uid', requireAuth, oneOf([
+    checkParams('uid').isEmail().withMessage('Invalid email value.'),
+    checkParams('uid').isInt().withMessage('Invalid integer value.'),
+  ]), (req, resp, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      next(400);
+      return;
+    }
+    next();
+  }, getUser);
 
   /**
    * @name POST /users
@@ -116,8 +158,19 @@ module.exports = (app, next) => {
    * @code {401} si no hay cabecera de autenticación
    * @code {403} si ya existe usuaria con ese `email`
    */
-  app.post('/users', requireAdmin, (req, resp, next) => {
-  });
+  app.post('/users', requireAdmin, [
+    body('email').isEmail(),
+    body('password').isString(),
+    body('roles').exists(),
+    body('roles.admin').isBoolean(),
+  ], (req, resp, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      next(400);
+      return;
+    }
+    next();
+  }, createUser);
 
   /**
    * @name PUT /users
@@ -141,8 +194,33 @@ module.exports = (app, next) => {
    * @code {403} una usuaria no admin intenta de modificar sus `roles`
    * @code {404} si la usuaria solicitada no existe
    */
-  app.put('/users/:uid', requireAuth, (req, resp, next) => {
-  });
+  app.put('/users/:uid', requireAuth, [
+    oneOf([
+      checkParams('uid').isEmail().withMessage('Invalid email value.'),
+      checkParams('uid').isInt().withMessage('Invalid integer value.'),
+    ]),
+    body('email').isEmail(),
+    body('password').isString(),
+    body('roles').custom((value) => {
+      if (typeof value === 'undefined') {
+        return true;
+      }
+      if (!(typeof value === 'object' && value.constructor === Object)) {
+        throw new Error('Invalid roles value.');
+      }
+      if (!(value.hasOwnProperty('admin') && typeof value.admin === 'boolean')) {
+        throw new Error('Invalid roles.admin value.');
+      }
+      return true;
+    }),
+  ], (req, resp, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      next(400);
+      return;
+    }
+    next();
+  }, updateUser);
 
   /**
    * @name DELETE /users
@@ -160,8 +238,17 @@ module.exports = (app, next) => {
    * @code {403} si no es ni admin o la misma usuaria
    * @code {404} si la usuaria solicitada no existe
    */
-  app.delete('/users/:uid', requireAuth, (req, resp, next) => {
-  });
+  app.delete('/users/:uid', requireAuth, oneOf([
+    checkParams('uid').isEmail().withMessage('Invalid email value.'),
+    checkParams('uid').isInt().withMessage('Invalid integer value.'),
+  ]), (req, resp, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      next(400);
+      return;
+    }
+    next();
+  }, deleteUser);
 
   initAdminUser(app, next);
 };

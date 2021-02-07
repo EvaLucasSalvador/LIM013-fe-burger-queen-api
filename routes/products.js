@@ -1,7 +1,16 @@
 const {
+  validationResult, query, body, param, oneOf, buildCheckFunction,
+} = require('express-validator');
+const {
   requireAuth,
   requireAdmin,
 } = require('../middleware/auth');
+
+const {
+  getProducts, getProduct, createProduct, updateProduct, deleteProduct,
+} = require('../controller/products');
+
+const typeOptions = ['Tipo', 'Categoría'];
 
 /** @module products */
 module.exports = (app, nextMain) => {
@@ -27,8 +36,20 @@ module.exports = (app, nextMain) => {
    * @code {200} si la autenticación es correcta
    * @code {401} si no hay cabecera de autenticación
    */
-  app.get('/products', requireAuth, (req, resp, next) => {
-  });
+  app.get('/products',
+    requireAuth,
+    [
+      query('page').isInt({ min: 1 }),
+      query('limit').isInt({ min: 5 }),
+    ],
+    (req, resp, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        next(400);
+        return;
+      }
+      next();
+    }, getProducts);
 
   /**
    * @name GET /products/:productId
@@ -47,8 +68,19 @@ module.exports = (app, nextMain) => {
    * @code {401} si no hay cabecera de autenticación
    * @code {404} si el producto con `productId` indicado no existe
    */
-  app.get('/products/:productId', requireAuth, (req, resp, next) => {
-  });
+  app.get('/products/:productId',
+    requireAuth,
+    [
+      param('productId').isInt(),
+    ],
+    (req, resp, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        next(400);
+        return;
+      }
+      next();
+    }, getProduct);
 
   /**
    * @name POST /products
@@ -72,9 +104,27 @@ module.exports = (app, nextMain) => {
    * @code {403} si no es admin
    * @code {404} si el producto con `productId` indicado no existe
    */
-  app.post('/products', requireAdmin, (req, resp, next) => {
-  });
-
+  app.post('/products',
+    requireAdmin,
+    [
+      body('name').isString(),
+      body('price').isFloat(),
+      body('image').isURL(),
+      body('type').isString().custom((value) => {
+        if (!typeOptions.includes(value)) {
+          throw new Error('No es un tipo válido.');
+        }
+        return true;
+      }),
+    ],
+    (req, resp, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        next(400);
+        return;
+      }
+      next();
+    }, createProduct);
 
   /**
    * @name PUT /products
@@ -99,8 +149,28 @@ module.exports = (app, nextMain) => {
    * @code {403} si no es admin
    * @code {404} si el producto con `productId` indicado no existe
    */
-  app.put('/products/:productId', requireAdmin, (req, resp, next) => {
-  });
+  app.put('/products/:productId',
+    requireAdmin,
+    [
+      param('productId').isInt(),
+      body('name').optional().isString(),
+      body('price').optional().isFloat(),
+      body('image').optional().isURL(),
+      body('type').optional().custom((value) => {
+        if (!typeOptions.includes(value)) {
+          throw new Error('No es un tipo válido.');
+        }
+        return true;
+      }),
+    ],
+    (req, resp, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        next(400);
+        return;
+      }
+      next();
+    }, updateProduct);
 
   /**
    * @name DELETE /products
@@ -120,8 +190,20 @@ module.exports = (app, nextMain) => {
    * @code {403} si no es ni admin
    * @code {404} si el producto con `productId` indicado no existe
    */
-  app.delete('/products/:productId', requireAdmin, (req, resp, next) => {
-  });
+  app.delete('/products/:productId',
+    requireAdmin,
+    [
+      param('productId').isInt(),
+    ],
+    (req, resp, next) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        next(400);
+        return;
+      }
+      next();
+    },
+    deleteProduct);
 
   nextMain();
 };
